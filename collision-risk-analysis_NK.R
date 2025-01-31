@@ -56,7 +56,7 @@ df_rc_radius <- df_rc_radius %>%
 df_rc_radius$lambda_e <- getLambda(vb = df_rc_radius$v.boat, vm = df_rc_radius$v.dolph, S = df_rc_radius$area, rc = df_rc_radius$rc_radius)  #encounter rate (assumes a fixed animal speed)
 
 #encounter rate when a boat is travelling a fixed distance
-df_rc_radius$lambda_FD <- (df_rc_radius$lambda_e) * (distance/df_rc_radius$v.boat) 
+df_rc_radius$lambda_FD <- df_rc_radius$lambda_e * (distance/df_rc_radius$v.boat) 
 df_rc_radius$lam_e_final <-  df_rc_radius$lambda_FD * n.boats * n.days * n.dolph #lambda re-scaled to account for number of days, number of boats and number of animals
 
 #number of encounters follows a poisson distribution of final encounter rate
