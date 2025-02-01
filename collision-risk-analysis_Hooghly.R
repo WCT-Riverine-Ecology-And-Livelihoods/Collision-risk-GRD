@@ -46,19 +46,30 @@ df_long$radius_dolph <- sqrt((l_dolph * w_dolph/pi))
 df_long$rc_radius <- df_long$radius_boat + df_long$radius_dolph 
 
 ##changing the striking depth parameter alone
-p_striking_depth <- seq(0.05, 0.3, by = 0.05)
-p_striking_depth <- rep(p_striking_depth, each = nrow(df_long))
+# p_striking_depth <- seq(0.05, 0.3, by = 0.05)
+# p_striking_depth_complete <- rep(p_striking_depth, each = nrow(df_long))
 
-##generate speeds for the boats per km using a normal distribution with the following parameters
-##small boat speed: mean of 5 kmph and 3 sd, converted into m/s
-##medium boat speed: mean of 10 kmph and 5 sd, converted into m/s
-##large boat speed: mean of 15 kmph and 5 sd, converted into m/s
+##keep p_striking depth contstant (0.05) and vary 
+##the p_avoid for large boats for a seq(0.3, 0.6, by = 0.05)
+p_striking_depth <- 0.05
+p_avoid_largeboat <- seq(0.3, 0.6, by = 0.05)
+
+##prepare data frame for outputs to be added 
 set.seed(12)
 lam_e <- c()
 lam_FD <- c()
 p_avoid <- c()
 n_sim <- 10000
-df_final <- as.data.frame(df_long[rep(seq_len(nrow(df_long)), times = length(p_striking_depth)), ])
+df_final <- df_long
+# df_final <- as.data.frame(df_long[rep(seq_len(nrow(df_long)), times = length(p_striking_depth)), ])
+# df_final <- cbind(df_final, p_striking_depth_complete)
+
+##generate speeds for the boats per km using a normal distribution with the following parameters
+##small boat speed: mean of 5 kmph and 3 sd, converted into m/s
+##medium boat speed: mean of 10 kmph and 5 sd, converted into m/s
+##large boat speed: mean of 15 kmph and 5 sd, converted into m/s
+for(x in 1:length(p_avoid_largeboat)){
+  p_avoid_large <- p_avoid_largeboat[x]
 for(i in 1:nrow(df_final)){
   if(df_final$boat_number[i] > 0) {
   v.boat <- if(df_final$boat_type[i] == "small_boats") {
@@ -73,7 +84,7 @@ for(i in 1:nrow(df_final)){
   ##calculate encounter rate for 1 boat-1 dolphin for all the boats in each km
   ##setting p_avoid to vary according to the speed of boat in each km and taking the mean of p_avoid per km to calculate encounter rate
   for (j in 1:length(v.boat)){
-    lam_e[j] <- getLambda(vb = v.boat[j], vm = v.dolph, S = df_final$area[i], rc = df_final$rc_radius[i])  #encounter rate (assumes a fixed animal speed)
+    lam_e[j] <- getLambda(vb = v.boat[j], vm = v.dolph, S = df_final$area[i], rc = df_final$rc_radius[i]) 
     #encounter rate of 1 boat - 1 dolphin when boat is travelling the fixed distance of 1000 m
     lam_FD[j] <- lam_e[j] * (distance/v.boat[j])
     p_avoid[j] <- if(v.boat[j] <= 1.5)
@@ -84,28 +95,35 @@ for(i in 1:nrow(df_final)){
       0.7
     }
     else {
-      0.5
+      p_avoid_large
     }
   }
   #encounter rate per km per year
-  df_long$lam_final[i] <- sum(lam_FD) * n.days * n.dolph 
-  df_long$p_avoid[i] <- mean(p_avoid)
+  df_final$lam_final[i] <- sum(lam_FD) * n.days * n.dolph 
+  df_final$p_avoid[i] <- mean(p_avoid)
   #number of encounters follows a poisson distribution of final encounter rate
-  df_long$n_encounters[i] <- mean(rpois(n_sim, df_long$lam_final[i]))
+  df_final$n_encounters[i] <- mean(rpois(n_sim, df_final$lam_final[i]))
   ##number of collisions follows a binomial distribution where, 
   ##n = number of replications
   ##size = number of trials (i.e number of encounters)
   ##p = probability of collision, which is the probability of being within striking depth AND not avoiding the boat
-  df_long$n_collisions[i] <- mean(rbinom(n_sim, 
-                                         size = as.integer(df_long$n_encounters[i]), 
-                                         p = p_striking_depth * (1 - df_long$p_avoid[i])))
+  df_final$n_collisions[i] <- mean(rbinom(n_sim, 
+                                         size = as.integer(df_final$n_encounters[i]), 
+                                         p = p_striking_depth * (1 - df_final$p_avoid[i])))
 }
   else {
-   df_long$lam_final[i] <- 0
-   df_long$p_avoid[i] <- NA
-   df_long$n_encounters[i] <- 0
-   df_long$n_collisions[i] <- 0
+    df_final$lam_final[i] <- 0
+    df_final$p_avoid[i] <- NA
+    df_final$n_encounters[i] <- 0
+    df_final$n_collisions[i] <- 0
   }
 }
+write.csv(df_final, file = paste0("results_pavoid_large_", p_avoid_large,".csv"))
+}
 
-write.csv(df_long, file = "collision-results_22.01.25.csv")
+graph <- ggplot(df_final, 
+               aes(x = factor(p_striking_depth_complete), 
+                   y = n_collisions, 
+                   fill = boat_type))+
+  geom_boxplot()
+
