@@ -27,7 +27,7 @@ getLambda <- function(vb, vm, rc, S)
 distance <- 1000 #distance traveled by a boat in each river segment in m
 n.days <- 365
 n.dolph <- 0.5 #number of dolphins per km 
-v.dolph <- 0.97222 #3.5 km/hr in m/s based on  Sasaki-Yamamoto et al. (2012) 
+v.dolph <- 1 #based on  Sasaki-Yamamoto et al. (2012) 
 ##add column for area - considered as distance * width of channel
 df_hooghly$area <- df_hooghly$river_width_m * distance
 ##melt the data frame to long format
@@ -128,26 +128,18 @@ my_theme = theme(
   legend.position = "bottom")
 
 ##boxplot of boatspeeds per boat type
-boxplot1 <- ggplot(df_speeds_encounters, aes(x = boat_type, y = boatspeed, fill = boat_type)) +
-            geom_boxplot() +
-            labs(x = "Boat type", y = "Boat speed (m/s)", fill = "") +
-            my_theme
+boxplot_boatspeed <- ggplot(df_speeds_encounters, aes(x = boat_type, y = boatspeed, fill = boat_type)) +
+                     geom_boxplot() +
+                     labs(x = "Boat type", y = "Boat speed (m/s)", fill = "") +
+                     my_theme
 
 ##boxplot of fixed distance encounter rate per boat type
-boxplot2 <- ggplot(df_speeds_encounters, aes(x = boat_type, y = lam_FD_area, fill = boat_type)) +
-            geom_boxplot() +
-            labs(x = "Boat type", y = "Fixed distance encounter rate per m2", fill = "") +
-            my_theme
+boxplot_lamFD_area <- ggplot(df_speeds_encounters, aes(x = boat_type, y = lam_FD_area, fill = boat_type)) +
+                geom_boxplot() +
+                labs(x = "Boat type", y = "Fixed distance encounter rate per m2", fill = "") +
+                my_theme
 
-##graph of lam_e per m2 ~ boatspeed
-graph_speed_base_enc <- ggplot(df_speeds_encounters, 
-                                aes(x = boatspeed, y = lam_e_area)) +
-  facet_wrap(~boat_type) +
-  geom_point() + 
-  labs(x = "Boat speed (m/s)", y = "Base encounter rate per m2", fill = "") +
-  theme(legend.position = "none")
-
-##graph of lam_FD per m2 ~ boatspeed for all 3 boat types
+##graph of fixed distance encounter rate per m2 vs. boatspeed, for all 3 boat types
 graph_speed_enc_small <- ggplot(df_speeds_encounters[df_speeds_encounters$boat_type == "small_boats", ], 
                            aes(x = boatspeed, y = lam_FD_area)) +
   facet_wrap(~boat_type) +
@@ -176,17 +168,17 @@ graph_speed_enc_large <- ggplot(df_speeds_encounters[df_speeds_encounters$boat_t
 
 graph_all <- ggarrange(graph_speed_enc_small, graph_speed_enc_medium, graph_speed_enc_large, ncol = 3, nrow = 1)
 
-ggsave(path = "Figs",
+ggsave(path = "Figs/For_MS",
        filename = "boxplot_boatspeed.png",
-       plot = boxplot1, 
+       plot = boxplot_boatspeed, 
        width = 30, height = 20, units = "cm",dpi = 300)
 
-ggsave(path = "Figs",
+ggsave(path = "Figs/For_MS",
        filename = "graph_encFD.png",
-       plot = boxplot2, 
+       plot = boxplot_lamFD_area, 
        width = 30, height = 20, units = "cm",dpi = 300)
 
-ggsave(path = "Figs",
+ggsave(path = "Figs/For_MS",
        filename = "graph_boatspeed_encounters.png",
        plot = graph_all, 
        width = 40, height = 15, units = "cm",dpi = 300)
@@ -252,6 +244,16 @@ for(i in 1:nrow(df_long)){
   }
 }
 
+##summary of encounter results per boat in each km segment 
+df_long$er_perboat <- df_long$n_encounters/df_long$boat_number
+er_perboat_sum <- psych::describeBy(df_long$er_perboat, df_long$boat_type)
+
+ggplot(df_long, aes(x = boat_type, y = er_perboat, fill = boat_type)) +
+  geom_boxplot() +
+  labs(x = "Boat type", y = "Mean expected number of encounters", fill = "") +
+  coord_cartesian(ylim = c(0, 100)) +
+  my_theme
+
 ##estimate number of collisions with all values of p_striking_depth
 idx <- 1  # index tracker
 for(x in 1:length(p_striking_depth)){
@@ -278,10 +280,19 @@ df_final <- as.data.frame(df_long[rep(seq_len(nrow(df_long)), times = length(p_s
 p_striking_depth_fordf <- rep(p_striking_depth, each = nrow(df_long))
 df_final <- cbind(df_final, p_striking_depth_fordf, n_collisions)
 
-##mean number of collisions per boat and summary
-df_final$collision_rate1 <- df_final$n_collisions/df_final$boat_number 
-df_final$collision_rate2 <- df_final$n_collisions/df_final$area
-df_final$collision_rate3 <- df_final$collision_rate1/df_final$area 
+##mean number of encounters and collisions per boat per m2 area and summary
+df_final$collision_percentage <- df_final$n_collisions/df_final$n_encounters
+df_final$cr_perboat <- df_final$n_collisions/df_final$boat_number 
+
+ggplot(df_final, aes(x = boat_type, y = cr_perboat, fill = boat_type)) +
+  geom_boxplot() +
+  labs(x = "Boat type", y = "Mean number of collisions per boat", fill = "") +
+  coord_cartesian(ylim = c(0, 10)) +
+  my_theme
+
+df_final_summary <- df_final %>% group_by(boat_type, p_striking_depth_fordf) %>%
+                    summarise(total_encounters = sum(n_encounters, na.rm = T), total_collision = sum(n_collisions, na.rm = T))
+
 df_summary <- df_final %>% group_by(boat_type, p_striking_depth_fordf) %>% 
               summarise(mean_CR = mean(collision_rate, na.rm = T), median_CR = median(collision_rate, na.rm = T), min_CR = min(collision_rate, na.rm = T), max_CR = max(collision_rate, na.rm = T))
   
@@ -295,37 +306,9 @@ graph_variable_pstrikingdepth_CR1 <- ggplot(df_final, aes(x = as.factor(p_striki
   theme_bw() +
   my_theme 
 
-##violinplot of collision rate2 ~ p_striking_depth
-graph_variable_pstrikingdepth_CR2 <- ggplot(df_final, aes(x = as.factor(p_striking_depth_fordf), y = collision_rate2, fill = boat_type)) + 
-  geom_violin(position =  position_dodge(0.9)) +
-  geom_boxplot(width = 0.3, position = position_dodge(0.9)) +
-  labs(x = "Probability of being within striking depth", y = "Collision rate (expected no. of collisions per m2)", fill = "Boat type") +
-  coord_cartesian(ylim = c(0, 0.0001)) +
-  theme_bw() +
-  my_theme 
-
-##violinplot of collision rate3 ~ p_striking_depth
-graph_variable_pstrikingdepth_CR3 <- ggplot(df_final, aes(x = as.factor(p_striking_depth_fordf), y = collision_rate3, fill = boat_type)) + 
-  geom_violin(position =  position_dodge(0.9)) +
-  geom_boxplot(width = 0.3, position = position_dodge(0.9)) +
-  labs(x = "Probability of being within striking depth", y = "Collision rate (expected no. of collisions per boat per m2)", fill = "Boat type") +
-  coord_cartesian(ylim = c(0, 0.00005)) +
-  theme_bw() +
-  my_theme
-
 ggsave(path = "Figs",
        filename = "collision_variable_pstrikingdepth_CR1.png",
        plot = graph_variable_pstrikingdepth_CR1, 
-       width = 30, height = 20, units = "cm",dpi = 300)
-
-ggsave(path = "Figs",
-       filename = "collision_variable_pstrikingdepth_CR2.png",
-       plot = graph_variable_pstrikingdepth_CR2, 
-       width = 30, height = 20, units = "cm",dpi = 300)
-
-ggsave(path = "Figs",
-       filename = "collision_variable_pstrikingdepth_CR3.png",
-       plot = graph_variable_pstrikingdepth_CR3, 
        width = 30, height = 20, units = "cm",dpi = 300)
 
 write.csv(df_final, file = paste0("results_variable_pstrikingdepth_05.03.25.csv"))
